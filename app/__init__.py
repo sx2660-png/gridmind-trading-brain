@@ -1,0 +1,1 @@
+"""Trading Brain application package."""
