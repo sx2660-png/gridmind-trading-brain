@@ -1,0 +1,39 @@
+"""End-to-end trading day workflow API models."""
+
+from typing import Optional
+
+from pydantic import BaseModel, Field
+
+from app.models.llm import LLMConfig
+
+
+class TradingDayRunRequest(BaseModel):
+    trade_date: str = Field(..., description="交易日，格式 YYYY-MM-DD")
+    market_type: str = Field(default="day_ahead", description="市场类型，如 day_ahead")
+    policy_query: Optional[str] = Field(
+        default=None,
+        description="政策检索问句；为空时使用默认问句",
+    )
+    llm: Optional[LLMConfig] = Field(
+        default=None,
+        description="可选：大模型配置，用于政策 Generation",
+    )
+
+
+class TradingDayRunResponse(BaseModel):
+    trace_id: str
+    trade_date: str
+    status: str
+    policy_output: dict = Field(
+        default_factory=dict,
+        description="政策 RAG：检索证据 + 生成结果",
+    )
+    policy_params: dict = Field(default_factory=dict)
+    prediction_output: dict = Field(default_factory=dict)
+    strategy_output: dict = Field(default_factory=dict)
+    risk_check_result: dict = Field(default_factory=dict)
+    execution_payload: dict = Field(default_factory=dict)
+    human_review_required: bool = False
+    audit_log: list[str] = Field(default_factory=list)
+    error_message: Optional[str] = None
+    policy_generation_mode: Optional[str] = None

@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>GridMind Trading Brain</title>
+  <link rel="stylesheet" href="/static/css/style.css" />
+</head>
+<body>
+  <header class="header">
+    <div class="header-inner">
+      <div>
+        <p class="eyebrow">GridMind</p>
+        <h1>电力交易大脑</h1>
+        <p class="subtitle">政策解析 · Mock 预测/策略 · 风控 · 申报报文</p>
+      </div>
+      <div class="status-pill" id="health-pill">检查中…</div>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="card" id="llm-settings-card">
+      <div class="card-title-row">
+        <h2>大模型配置（RAG · Generation）</h2>
+        <label class="toggle">
+          <input type="checkbox" id="llm-enabled" checked />
+          <span>启用 LLM 生成</span>
+        </label>
+      </div>
+      <p class="hint">
+        检索仍用本地 embedding；填写 API 后由大模型根据证据生成 <code>answer</code> 与 <code>policy_params</code>。
+        密钥仅保存在浏览器 localStorage，随请求发往本机后端。
+      </p>
+      <form id="llm-settings-form" class="form-grid">
+        <label class="span-2">
+          API Key
+          <input type="password" name="api_key" id="llm-api-key" placeholder="sk-..." autocomplete="off" />
+        </label>
+        <label class="span-2">
+          Base URL（OpenAI 兼容）
+          <input type="url" name="base_url" id="llm-base-url" value="https://api.openai.com/v1" />
+        </label>
+        <label>
+          Model
+          <input type="text" name="model" id="llm-model" value="gpt-4o-mini" />
+        </label>
+        <div class="actions align-end">
+          <button type="submit" class="btn btn-secondary">保存配置</button>
+          <button type="button" class="btn btn-link" id="llm-clear-btn">清除</button>
+        </div>
+      </form>
+      <p class="hint small" id="llm-save-hint"></p>
+    </section>
+
+    <section class="card card-highlight">
+      <h2>交易日流水线</h2>
+      <p class="hint">输入一个交易日，自动完成：规则检索 → 预测 → 策略 → 风控 → Mock 报文</p>
+      <form id="workflow-form" class="form-grid">
+        <label>
+          交易日
+          <input type="date" name="trade_date" required value="2026-05-22" />
+        </label>
+        <label>
+          市场类型
+          <select name="market_type">
+            <option value="day_ahead" selected>day_ahead（日前）</option>
+            <option value="real_time">real_time（实时）</option>
+          </select>
+        </label>
+        <label class="span-2">
+          政策检索问句（可选）
+          <input
+            type="text"
+            name="policy_query"
+            placeholder="留空使用默认问句"
+          />
+        </label>
+        <div class="span-2 actions">
+          <button type="submit" class="btn btn-primary" id="workflow-btn">运行流水线</button>
+        </div>
+      </form>
+      <div id="workflow-result" class="result hidden"></div>
+    </section>
+
+    <div class="two-col">
+      <section class="card">
+        <h2>政策检索</h2>
+        <form id="policy-form" class="form-stack">
+          <label>
+            查询内容
+            <textarea name="query" rows="3" required>广东电力市场日前交易申报规则和96点曲线要求</textarea>
+          </label>
+          <label>
+            Top K
+            <input type="number" name="top_k" min="1" max="20" value="5" />
+          </label>
+          <div class="actions">
+            <button type="submit" class="btn btn-primary">查询政策</button>
+            <button type="button" class="btn btn-secondary" id="rebuild-index-btn">重建索引</button>
+          </div>
+        </form>
+        <div id="policy-result" class="result hidden"></div>
+      </section>
+
+      <section class="card">
+        <h2>快捷操作</h2>
+        <div class="quick-actions">
+          <button type="button" class="btn btn-secondary" data-action="health">健康检查</button>
+          <button type="button" class="btn btn-secondary" data-action="policy-status">政策索引状态</button>
+          <button type="button" class="btn btn-secondary" data-action="demo-state">示例状态</button>
+          <button type="button" class="btn btn-secondary" data-action="demo-policy">示例政策查询</button>
+          <a class="btn btn-link" href="/docs" target="_blank" rel="noreferrer">打开 Swagger API</a>
+        </div>
+        <div id="quick-result" class="result hidden"></div>
+      </section>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <span>API 根路径返回 JSON；本页位于 <code>/ui</code></span>
+  </footer>
+
+  <script type="module" src="/static/js/app.js"></script>
+</body>
+</html>
