@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from pathlib import Path
 import re
-
-from typing import Optional
+from typing import Any, Optional
 
 from app.models.llm import LLMConfig
 from app.models.policy import PolicyEvidence, PolicyQueryResponse
@@ -165,4 +165,86 @@ def _compose_answer(query: str, params: dict, evidence: list[PolicyEvidence]) ->
         sections.append("已返回最相关的政策片段，但未抽取到稳定的结构化规则字段。")
 
     top_sources = "、".join(item.source for item in evidence[:3])
-    return f"针对“{query}”，" + "".join(sections) + f" 主要依据：{top_sources}。"
+    return "针对\"" + query + "\"，" + "".join(sections) + " 主要依据：" + top_sources + "。"
+
+
+_DEFAULT_POLICY_QUERY = (
+    "广东电力市场日前交易申报规则"
+    "、96点曲线与偏差考核要求"
+)
+_DEFAULT_MAINTENANCE_LIMIT_MWH = 900.0
+
+
+def policy_node(state) -> dict[str, Any]:
+    from trading_state import TradingState
+    from app.core.config import get_settings
+
+    if isinstance(state, dict):
+        state = TradingState.model_validate(state)
+
+    print("[Policy Agent] current_node=Policy Agent trace_id=" + state.trace_id)
+
+    cfg = get_settings()
+    agent = PolicyAgent(
+        source_dir=Path(cfg.policy_articles_dir),
+        index_path=Path(cfg.policy_index_path),
+    )
+
+    llm_config = resolve_llm_config(None)
+
+    response = agent.query(
+        query=_DEFAULT_POLICY_QUERY,
+        top_k=5,
+        llm=llm_config,
+    )
+
+    web_evidence_texts = []
+    web_sources = []
+    for item in state.web_search_results:
+        content = item.get("content", "")
+        if content:
+            web_evidence_texts.append(content)
+            web_sources.append(item.get("url", "web"))
+
+    if web_evidence_texts and llm_config:
+        all_evidence_texts = [e.text for e in response.evidence] + web_evidence_texts
+        all_sources = [e.source for e in response.evidence] + web_sources
+        try:
+            answer, policy_params = generate_policy_with_llm(
+                config=llm_config,
+                query=_DEFAULT_POLICY_QUERY,
+                evidence_texts=all_evidence_texts,
+                sources=all_sources,
+            )
+            response = PolicyQueryResponse(
+                query=_DEFAULT_POLICY_QUERY,
+                answer=answer,
+                policy_params=policy_params,
+                evidence=response.evidence,
+                generation_mode="llm_with_web",
+                generation_note="model=" + llm_config.model + ", web_results=" + str(len(web_evidence_texts)),
+            )
+        except Exception:
+            pass
+
+    policy_params = response.policy_params
+    policy_rules = {
+        "region": policy_params.get("region", "guangdong"),
+        "market_stage": policy_params.get("market_stage", "day_ahead"),
+        "maintenance_limit_mwh": policy_params.get(
+            "maintenance_limit_mwh", _DEFAULT_MAINTENANCE_LIMIT_MWH
+        ),
+    }
+    if "time_resolution" in policy_params:
+        policy_rules["time_resolution"] = policy_params["time_resolution"]
+
+    print(
+        "[Policy Agent] trace_id=" + state.trace_id
+        + " mode=" + response.generation_mode
+        + " rules=" + str(list(policy_rules.keys()))
+    )
+
+    return {
+        "policy_rules": policy_rules,
+        "updated_at": datetime.now(timezone.utc),
+    }

@@ -18,6 +18,9 @@ class Settings(BaseModel):
     llm_api_key: str = Field(default="")
     llm_base_url: str = Field(default="https://api.openai.com/v1")
     llm_model: str = Field(default="gpt-4o-mini")
+    tavily_api_key: str = Field(default="")
+    checkpoint_db_path: str = Field(default="data/checkpoints.sqlite")
+    web_search_enabled: bool = Field(default=True)
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -30,6 +33,9 @@ class Settings(BaseModel):
             llm_api_key=os.getenv("LLM_API_KEY", ""),
             llm_base_url=os.getenv("LLM_BASE_URL", "https://api.openai.com/v1"),
             llm_model=os.getenv("LLM_MODEL", "gpt-4o-mini"),
+            tavily_api_key=os.getenv("TAVILY_API_KEY", ""),
+            checkpoint_db_path=os.getenv("CHECKPOINT_DB_PATH", "data/checkpoints.sqlite"),
+            web_search_enabled=os.getenv("WEB_SEARCH_ENABLED", "true").lower() in ("1", "true", "yes"),
         )
 
 

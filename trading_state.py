@@ -44,11 +44,20 @@ class TradingState(BaseModel):
     # Risk Agent output: rule violations, warnings, or review flags.
     risk_flags: list[str] = Field(default_factory=list)
 
+    # Web search results enriching policy context (from Tavily API).
+    web_search_results: list[dict] = Field(default_factory=list)
+
     # Risk workflow status, for example pending, passed, warning, or blocked.
     risk_status: str = "pending"
 
     # Execution workflow status, for example pending, submitted, failed, or cancelled.
     execution_status: str = "pending"
+
+    # Human review decision: "approved", "rejected", or "pending".
+    human_review_decision: str = "pending"
+
+    # Human reviewer's comment or reason for the decision.
+    human_review_comment: str = ""
 
     # State creation timestamp, useful for checkpointing and audit trails.
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

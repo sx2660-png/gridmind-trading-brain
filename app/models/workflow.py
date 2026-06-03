@@ -37,3 +37,21 @@ class TradingDayRunResponse(BaseModel):
     audit_log: list[str] = Field(default_factory=list)
     error_message: Optional[str] = None
     policy_generation_mode: Optional[str] = None
+    interrupted: bool = False
+    resume_endpoint: Optional[str] = None
+
+
+class WorkflowResumeRequest(BaseModel):
+    trace_id: str = Field(..., description="The trace_id / thread_id of the paused workflow")
+    decision: str = Field(..., description="'approved' or 'rejected'")
+    comment: str = Field(default="", description="Human reviewer's comment")
+
+
+class WorkflowStatusResponse(BaseModel):
+    trace_id: str
+    status: str
+    risk_status: str = "pending"
+    execution_status: str = "pending"
+    risk_flags: list[str] = Field(default_factory=list)
+    human_review_decision: str = "pending"
+    next_nodes: list[str] = Field(default_factory=list)

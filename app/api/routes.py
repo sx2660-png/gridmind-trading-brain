@@ -1,14 +1,21 @@
 """API route definitions."""
 
 from pathlib import Path
+from uuid import uuid4
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 
 from app.agents.policy_agent import PolicyAgent
 from app.core.config import settings
 from app.models.policy import PolicyIndexStatus, PolicyQueryRequest, PolicyQueryResponse
-from app.models.workflow import TradingDayRunRequest, TradingDayRunResponse
+from app.models.workflow import (
+    TradingDayRunRequest,
+    TradingDayRunResponse,
+    WorkflowResumeRequest,
+    WorkflowStatusResponse,
+)
 from app.services.trading_pipeline import run_trading_day
+from app.services.workflow_factory import get_workflow
 from app.models.prediction import PredictionOutput
 from app.models.risk import RiskCheckOutput
 from app.models.state import TradingState
@@ -82,5 +89,109 @@ def demo_policy_agent() -> PolicyQueryResponse:
 
 @router.post("/workflow/run", response_model=TradingDayRunResponse)
 def run_workflow(request: TradingDayRunRequest) -> TradingDayRunResponse:
-    """给定交易日，串联：政策规则 → mock 预测 → mock 策略 → 风控 → mock 报文。"""
+    """给定交易日，通过 LangGraph 串联：联网搜索 → 政策规则 → 预测 → 策略 → 风控 → 报文。"""
+    from trading_state import TradingState as LangGraphState
+
+    workflow = get_workflow()
+    trace_id = f"trace-{request.trade_date.replace('-', '')}-{uuid4().hex[:8]}"
+    config = {"configurable": {"thread_id": trace_id}}
+
+    initial_state = LangGraphState(
+        trace_id=trace_id,
+        trading_date=request.trade_date,
+        market_type=request.market_type,
+        mid_long_term_contract_mwh=[380.0] * 24,
+    )
+
+    result = workflow.invoke(initial_state, config=config)
+    state = LangGraphState.model_validate(result)
+
+    snapshot = workflow.get_state(config)
+    is_interrupted = bool(snapshot.next)
+
+    return TradingDayRunResponse(
+        trace_id=trace_id,
+        trade_date=request.trade_date,
+        status="paused_for_human_review" if is_interrupted else "completed",
+        policy_params=state.policy_rules,
+        risk_check_result={
+            "risk_status": state.risk_status,
+            "risk_flags": state.risk_flags,
+        },
+        execution_payload={
+            "declaration_curve_mwh": state.declaration_curve_mwh,
+            "declaration_ratio": state.declaration_ratio,
+            "execution_status": state.execution_status,
+        },
+        human_review_required=is_interrupted,
+        audit_log=[],
+        interrupted=is_interrupted,
+        resume_endpoint="/api/workflow/resume" if is_interrupted else None,
+    )
+
+
+@router.post("/workflow/resume", response_model=WorkflowStatusResponse)
+def resume_workflow(request: WorkflowResumeRequest) -> WorkflowStatusResponse:
+    """Resume a workflow paused at human_review after operator decision."""
+    from trading_state import TradingState as LangGraphState
+
+    workflow = get_workflow()
+    config = {"configurable": {"thread_id": request.trace_id}}
+
+    snapshot = workflow.get_state(config)
+    if not snapshot.values:
+        raise HTTPException(status_code=404, detail=f"No workflow found for trace_id={request.trace_id}")
+    if not snapshot.next:
+        raise HTTPException(status_code=400, detail="Workflow is not paused; nothing to resume")
+
+    workflow.update_state(
+        config,
+        {
+            "human_review_decision": request.decision,
+            "human_review_comment": request.comment,
+        },
+    )
+
+    result = workflow.invoke(None, config=config)
+    state = LangGraphState.model_validate(result)
+
+    return WorkflowStatusResponse(
+        trace_id=request.trace_id,
+        status="completed" if state.execution_status in ("submitted", "approved_by_human") else state.execution_status,
+        risk_status=state.risk_status,
+        execution_status=state.execution_status,
+        risk_flags=state.risk_flags,
+        human_review_decision=state.human_review_decision,
+    )
+
+
+@router.get("/workflow/status/{trace_id}", response_model=WorkflowStatusResponse)
+def get_workflow_status(trace_id: str) -> WorkflowStatusResponse:
+    """Check the current state of a workflow by trace_id."""
+    from trading_state import TradingState as LangGraphState
+
+    workflow = get_workflow()
+    config = {"configurable": {"thread_id": trace_id}}
+
+    snapshot = workflow.get_state(config)
+    if not snapshot.values:
+        raise HTTPException(status_code=404, detail=f"No workflow found for trace_id={trace_id}")
+
+    state = LangGraphState.model_validate(snapshot.values)
+    next_nodes = list(snapshot.next) if snapshot.next else []
+
+    return WorkflowStatusResponse(
+        trace_id=trace_id,
+        status="paused" if next_nodes else "completed",
+        risk_status=state.risk_status,
+        execution_status=state.execution_status,
+        risk_flags=state.risk_flags,
+        human_review_decision=state.human_review_decision,
+        next_nodes=next_nodes,
+    )
+
+
+@router.post("/workflow/run-legacy", response_model=TradingDayRunResponse)
+def run_workflow_legacy(request: TradingDayRunRequest) -> TradingDayRunResponse:
+    """Legacy procedural pipeline (without LangGraph)."""
     return run_trading_day(request)

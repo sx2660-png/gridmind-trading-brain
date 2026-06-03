@@ -1,4 +1,14 @@
-"""Runnable LangGraph demo for the electricity trading multi-agent workflow."""
+"""Runnable LangGraph demo for the electricity trading multi-agent workflow.
+
+Graph topology:
+  START → web_search → policy → prediction → strategy → risk → conditional
+    ├─ PASS → execution → END
+    ├─ RETURN_FOR_RECALCULATION → strategy (loop)
+    ├─ REJECT → reject → END
+    └─ REQUIRES_HUMAN_REVIEW → (interrupt) → human_review → conditional
+                                                ├─ approved → execution → END
+                                                └─ rejected → END
+"""
 
 from __future__ import annotations
 
@@ -13,6 +23,8 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from langgraph.graph import END, START, StateGraph
 
+from app.agents.policy_agent import policy_node
+from app.agents.web_search_agent import web_search_node
 from mock_api.execution_api import ExecutionRequest, submit_declaration
 from mock_api.prediction_api import PredictionRequest, build_prediction
 from mock_api.strategy_api import StrategyRequest, build_strategy
@@ -57,8 +69,6 @@ def strategy_node(state: TradingState) -> dict[str, Any]:
     declaration_curve = strategy.declaration_curve_mwh
     declaration_ratio = strategy.declaration_ratio
 
-    # If Risk Agent returned the plan for recalculation, tighten the strategy
-    # around forecasted load so the next risk pass has a valid baseline.
     if state.risk_status == "RETURN_FOR_RECALCULATION":
         print(f"[Strategy Agent] trace_id={state.trace_id} recalculating declaration after risk feedback")
         declaration_curve = [round(load, 2) for load in state.predicted_load_mwh]
@@ -131,10 +141,26 @@ def reject_node(state: TradingState) -> dict[str, Any]:
 
 
 def human_review_node(state: TradingState) -> dict[str, Any]:
-    """Terminal pause node for cases that need manual operator review."""
+    """Process the human review decision injected via workflow.update_state()."""
     state = _as_state(state)
     _log_node("Human Review", state)
-    print(f"[Human Review] trace_id={state.trace_id} workflow paused for operator review")
+
+    if state.human_review_decision == "approved":
+        print(f"[Human Review] trace_id={state.trace_id} approved by operator")
+        return {
+            "risk_status": "PASS",
+            "execution_status": "approved_by_human",
+            "updated_at": _now(),
+        }
+
+    if state.human_review_decision == "rejected":
+        print(f"[Human Review] trace_id={state.trace_id} rejected by operator")
+        return {
+            "execution_status": "rejected_by_human",
+            "updated_at": _now(),
+        }
+
+    print(f"[Human Review] trace_id={state.trace_id} awaiting operator decision")
     return {
         "execution_status": "paused_for_human_review",
         "updated_at": _now(),
@@ -155,9 +181,20 @@ def route_after_risk(state: TradingState) -> str:
     return "reject"
 
 
-def build_workflow():
-    """Compile the LangGraph workflow."""
+def route_after_human_review(state: TradingState) -> str:
+    """Route after human review: approved → execution, otherwise → end."""
+    state = _as_state(state)
+    if state.risk_status == "PASS":
+        return "execution"
+    return "end"
+
+
+def build_workflow(checkpointer=None):
+    """Compile the LangGraph workflow with optional checkpointer and interrupt."""
     graph = StateGraph(TradingState)
+
+    graph.add_node("web_search", web_search_node)
+    graph.add_node("policy", policy_node)
     graph.add_node("prediction", prediction_node)
     graph.add_node("strategy", strategy_node)
     graph.add_node("risk", risk_node)
@@ -165,7 +202,9 @@ def build_workflow():
     graph.add_node("reject", reject_node)
     graph.add_node("human_review", human_review_node)
 
-    graph.add_edge(START, "prediction")
+    graph.add_edge(START, "web_search")
+    graph.add_edge("web_search", "policy")
+    graph.add_edge("policy", "prediction")
     graph.add_edge("prediction", "strategy")
     graph.add_edge("strategy", "risk")
     graph.add_conditional_edges(
@@ -178,10 +217,23 @@ def build_workflow():
             "human_review": "human_review",
         },
     )
+    graph.add_conditional_edges(
+        "human_review",
+        route_after_human_review,
+        {
+            "execution": "execution",
+            "end": END,
+        },
+    )
     graph.add_edge("execution", END)
     graph.add_edge("reject", END)
-    graph.add_edge("human_review", END)
-    return graph.compile()
+
+    compile_kwargs: dict[str, Any] = {}
+    if checkpointer is not None:
+        compile_kwargs["checkpointer"] = checkpointer
+        compile_kwargs["interrupt_before"] = ["human_review"]
+
+    return graph.compile(**compile_kwargs)
 
 
 def demo_initial_state() -> TradingState:
@@ -192,24 +244,39 @@ def demo_initial_state() -> TradingState:
         market_type="day_ahead",
         date_type="normal_day",
         mid_long_term_contract_mwh=[380.0] * 24,
-        policy_rules={
-            "region": "guangdong",
-            "market_stage": "day_ahead",
-            "maintenance_limit_mwh": 900.0,
-        },
     )
 
 
 def main() -> None:
-    workflow = build_workflow()
+    import sqlite3
+    from langgraph.checkpoint.sqlite import SqliteSaver
+
+    Path("data").mkdir(exist_ok=True)
+    conn = sqlite3.connect("data/checkpoints.sqlite", check_same_thread=False)
+    checkpointer = SqliteSaver(conn)
+    checkpointer.setup()
+
+    workflow = build_workflow(checkpointer=checkpointer)
     initial_state = demo_initial_state()
+    config = {"configurable": {"thread_id": initial_state.trace_id}}
+
     print(f"[Workflow] starting trace_id={initial_state.trace_id}")
-    final_state = workflow.invoke(initial_state)
+    final_state = workflow.invoke(initial_state, config=config)
     final_state = _as_state(final_state)
-    print(
-        f"[Workflow] finished trace_id={final_state.trace_id} "
-        f"risk_status={final_state.risk_status} execution_status={final_state.execution_status}"
-    )
+
+    snapshot = workflow.get_state(config)
+    if snapshot.next:
+        print(
+            f"[Workflow] paused at {snapshot.next} trace_id={final_state.trace_id} "
+            f"risk_status={final_state.risk_status}"
+        )
+        print("[Workflow] to resume, call workflow.update_state() with human_review_decision")
+    else:
+        print(
+            f"[Workflow] finished trace_id={final_state.trace_id} "
+            f"risk_status={final_state.risk_status} "
+            f"execution_status={final_state.execution_status}"
+        )
 
 
 def _as_state(state: TradingState | dict[str, Any]) -> TradingState:
