@@ -17,6 +17,10 @@ class TradingState(BaseModel):
     # Market type for this workflow, for example day_ahead, real_time, or mid_long_term.
     market_type: str = "day_ahead"
 
+    # Information cutoff for replay/audit runs. Search results published after
+    # this time must not be used for analysis.
+    as_of_datetime: datetime | None = None
+
     # Calendar/date classification, for example normal_day, weekend, holiday, or peak_day.
     date_type: str = "normal_day"
 
@@ -46,6 +50,12 @@ class TradingState(BaseModel):
 
     # Web search results enriching policy context (from Tavily API).
     web_search_results: list[dict] = Field(default_factory=list)
+
+    # Market anomaly signals extracted from web/news evidence.
+    market_anomaly: dict = Field(default_factory=dict)
+
+    # Strategy-level adjustment applied because of market anomaly warnings.
+    strategy_adjustments: list[str] = Field(default_factory=list)
 
     # Risk workflow status, for example pending, passed, warning, or blocked.
     risk_status: str = "pending"

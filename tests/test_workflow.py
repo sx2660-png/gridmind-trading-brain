@@ -77,12 +77,19 @@ def test_workflow_run_legacy(tmp_path: Path, monkeypatch) -> None:
     config.get_settings.cache_clear()
 
 
-def test_langgraph_workflow_standalone(tmp_path: Path) -> None:
+def test_langgraph_workflow_standalone(tmp_path: Path, monkeypatch) -> None:
     """Test the LangGraph workflow directly (not via API)."""
     import sys
     import sqlite3
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+    monkeypatch.setenv("TAVILY_API_KEY", "")
+    monkeypatch.setenv("LLM_API_KEY", "")
+
+    from app.core import config
+
+    config.get_settings.cache_clear()
 
     from langgraph.checkpoint.sqlite import SqliteSaver
     from workflow_demo.main import build_workflow, _as_state
@@ -99,14 +106,16 @@ def test_langgraph_workflow_standalone(tmp_path: Path) -> None:
         market_type="day_ahead",
         mid_long_term_contract_mwh=[380.0] * 24,
     )
-    config = {"configurable": {"thread_id": state.trace_id}}
-    result = workflow.invoke(state, config=config)
+    workflow_config = {"configurable": {"thread_id": state.trace_id}}
+    result = workflow.invoke(state, config=workflow_config)
     final = _as_state(result)
 
     assert final.risk_status == "PASS"
     assert final.execution_status == "submitted"
     assert len(final.declaration_curve_mwh) == 24
     assert final.policy_rules
+
+    config.get_settings.cache_clear()
 
 
 def test_workflow_status_endpoint(tmp_path: Path, monkeypatch) -> None:

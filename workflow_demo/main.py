@@ -68,16 +68,31 @@ def strategy_node(state: TradingState) -> dict[str, Any]:
 
     declaration_curve = strategy.declaration_curve_mwh
     declaration_ratio = strategy.declaration_ratio
+    strategy_adjustments: list[str] = []
 
     if state.risk_status == "RETURN_FOR_RECALCULATION":
         print(f"[Strategy Agent] trace_id={state.trace_id} recalculating declaration after risk feedback")
         declaration_curve = [round(load, 2) for load in state.predicted_load_mwh]
         declaration_ratio = [1.0 for _ in state.predicted_load_mwh]
+        strategy_adjustments.append("RISK_RECALCULATION_ALIGN_TO_FORECAST_LOAD")
+
+    anomaly_level = state.market_anomaly.get("alert_level", "NONE")
+    if anomaly_level in ("HIGH", "CRITICAL", "UNKNOWN"):
+        print(
+            f"[Strategy Agent] trace_id={state.trace_id} "
+            f"market_anomaly={anomaly_level}; applying defensive declaration"
+        )
+        declaration_curve = [round(load, 2) for load in state.predicted_load_mwh]
+        declaration_ratio = [1.0 for _ in state.predicted_load_mwh]
+        strategy_adjustments.append(
+            "MARKET_ANOMALY_DEFENSIVE_ALIGN_TO_FORECAST_LOAD"
+        )
 
     print(f"[Strategy Agent] trace_id={state.trace_id} estimated_profit={strategy.estimated_profit}")
     return {
         "declaration_curve_mwh": declaration_curve,
         "declaration_ratio": declaration_ratio,
+        "strategy_adjustments": strategy_adjustments,
         "risk_status": "pending",
         "risk_flags": [],
         "updated_at": _now(),

@@ -84,6 +84,16 @@ def check_risk(state: TradingState) -> dict[str, Any]:
                     f"{maintenance_limit} MWh."
                 )
 
+    # Rule E: market-anomaly warnings are not pure compliance violations, but a
+    # high/critical alert means automatic declaration should pause for operator
+    # review before submission.
+    anomaly_level = state.market_anomaly.get("alert_level")
+    if state.market_anomaly.get("requires_human_intervention"):
+        risk_flags.append(
+            "MARKET_ANOMALY_REQUIRES_HUMAN_REVIEW: "
+            f"alert_level={anomaly_level}, score={state.market_anomaly.get('score', 0)}."
+        )
+
     risk_status = _derive_risk_status(risk_flags)
     return {
         "risk_status": risk_status,
@@ -103,6 +113,9 @@ def _derive_risk_status(risk_flags: list[str]) -> str:
         return "RETURN_FOR_RECALCULATION"
 
     if any(flag.startswith("MAINTENANCE_LIMIT_EXCEEDED") for flag in risk_flags):
+        return "REQUIRES_HUMAN_REVIEW"
+
+    if any(flag.startswith("MARKET_ANOMALY_REQUIRES_HUMAN_REVIEW") for flag in risk_flags):
         return "REQUIRES_HUMAN_REVIEW"
 
     return "REQUIRES_HUMAN_REVIEW"

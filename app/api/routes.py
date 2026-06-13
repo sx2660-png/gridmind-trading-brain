@@ -100,6 +100,7 @@ def run_workflow(request: TradingDayRunRequest) -> TradingDayRunResponse:
         trace_id=trace_id,
         trading_date=request.trade_date,
         market_type=request.market_type,
+        as_of_datetime=request.as_of_datetime,
         mid_long_term_contract_mwh=[380.0] * 24,
     )
 
@@ -114,6 +115,7 @@ def run_workflow(request: TradingDayRunRequest) -> TradingDayRunResponse:
         trade_date=request.trade_date,
         status="paused_for_human_review" if is_interrupted else "completed",
         policy_params=state.policy_rules,
+        market_analysis=state.market_anomaly,
         risk_check_result={
             "risk_status": state.risk_status,
             "risk_flags": state.risk_flags,
@@ -121,6 +123,7 @@ def run_workflow(request: TradingDayRunRequest) -> TradingDayRunResponse:
         execution_payload={
             "declaration_curve_mwh": state.declaration_curve_mwh,
             "declaration_ratio": state.declaration_ratio,
+            "strategy_adjustments": state.strategy_adjustments,
             "execution_status": state.execution_status,
         },
         human_review_required=is_interrupted,

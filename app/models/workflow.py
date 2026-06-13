@@ -1,5 +1,6 @@
 """End-to-end trading day workflow API models."""
 
+from datetime import datetime
 from typing import Optional
 
 from pydantic import BaseModel, Field
@@ -13,6 +14,10 @@ class TradingDayRunRequest(BaseModel):
     policy_query: Optional[str] = Field(
         default=None,
         description="政策检索问句；为空时使用默认问句",
+    )
+    as_of_datetime: Optional[datetime] = Field(
+        default=None,
+        description="信息截点；为空时默认使用交易日前一日 12:00",
     )
     llm: Optional[LLMConfig] = Field(
         default=None,
@@ -30,6 +35,7 @@ class TradingDayRunResponse(BaseModel):
     )
     policy_params: dict = Field(default_factory=dict)
     prediction_output: dict = Field(default_factory=dict)
+    market_analysis: dict = Field(default_factory=dict)
     strategy_output: dict = Field(default_factory=dict)
     risk_check_result: dict = Field(default_factory=dict)
     execution_payload: dict = Field(default_factory=dict)

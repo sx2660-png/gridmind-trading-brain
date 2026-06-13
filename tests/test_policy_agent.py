@@ -5,7 +5,13 @@ from pathlib import Path
 from app.agents.policy_agent import PolicyAgent
 
 
-def test_policy_agent_retrieves_local_policy_text(tmp_path: Path) -> None:
+def test_policy_agent_retrieves_local_policy_text(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("LLM_API_KEY", "")
+
+    from app.core import config
+
+    config.get_settings.cache_clear()
+
     source_dir = tmp_path / "articles"
     source_dir.mkdir()
     (source_dir / "rule.txt").write_text(
@@ -26,3 +32,5 @@ def test_policy_agent_retrieves_local_policy_text(tmp_path: Path) -> None:
     assert response.policy_params["time_resolution"]["points_per_day"] == 96
     assert "declaration_rules" in response.policy_params
     assert response.generation_mode == "rules"
+
+    config.get_settings.cache_clear()

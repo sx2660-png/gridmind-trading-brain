@@ -47,6 +47,9 @@ htmlcov/
 .tox/
 .nox/
 
+# Generated reports
+docs/reports/*.md
+
 # OS
 .DS_Store
 Thumbs.db
