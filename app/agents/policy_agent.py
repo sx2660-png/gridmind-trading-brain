@@ -176,7 +176,7 @@ _DEFAULT_MAINTENANCE_LIMIT_MWH = 900.0
 
 
 def policy_node(state) -> dict[str, Any]:
-    from trading_state import TradingState
+    from app.models.trading_state import TradingState
     from app.core.config import get_settings
 
     if isinstance(state, dict):

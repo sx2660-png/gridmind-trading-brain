@@ -57,8 +57,8 @@ def test_web_search_filters_results_after_as_of(monkeypatch) -> None:
 
 def test_enterprise_case_triggers_human_review(monkeypatch) -> None:
     from app.agents import web_search_agent
-    from trading_state import TradingState
-    from workflow_demo.main import _as_state, build_workflow
+    from app.models.trading_state import TradingState
+    from app.services.workflow_graph import _as_state, build_workflow
 
     def fake_search_power_market_news(**kwargs):
         assert kwargs["trading_date"] == "2026-05-25"

@@ -42,3 +42,36 @@ def test_policy_status() -> None:
     body = response.json()
     assert "index_path" in body
     assert "embedding_model" in body
+
+
+def test_mock_endpoints() -> None:
+    predict_response = client.post(
+        "/mock/predict",
+        json={"trading_date": "2026-05-25", "market_type": "day_ahead"},
+    )
+    assert predict_response.status_code == 200
+    prediction = predict_response.json()
+    assert len(prediction["predicted_da_price"]) == 24
+    assert len(prediction["predicted_rt_price"]) == 24
+    assert len(prediction["predicted_load_mwh"]) == 24
+
+    strategy_response = client.post(
+        "/mock/strategy",
+        json={
+            "predicted_da_price": prediction["predicted_da_price"],
+            "predicted_rt_price": prediction["predicted_rt_price"],
+            "predicted_load_mwh": prediction["predicted_load_mwh"],
+            "mid_long_term_contract_mwh": [380.0] * 24,
+        },
+    )
+    assert strategy_response.status_code == 200
+    strategy = strategy_response.json()
+    assert len(strategy["declaration_curve_mwh"]) == 24
+    assert len(strategy["declaration_ratio"]) == 24
+
+    execution_response = client.post(
+        "/mock/execute",
+        json={"declaration": {"trace_id": "mock-api-test", **strategy}},
+    )
+    assert execution_response.status_code == 200
+    assert execution_response.json()["execution_status"] == "submitted"

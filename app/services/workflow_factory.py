@@ -19,7 +19,7 @@ def get_workflow():
         return _workflow
 
     from langgraph.checkpoint.sqlite import SqliteSaver
-    from workflow_demo.main import build_workflow
+    from app.services.workflow_graph import build_workflow
 
     cfg = get_settings()
     db_path = Path(cfg.checkpoint_db_path)

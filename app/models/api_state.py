@@ -1,11 +1,11 @@
-"""Trading workflow state model."""
+"""API-facing trading workflow state model."""
 
 from typing import Optional
 
 from pydantic import BaseModel, Field
 
 
-class TradingState(BaseModel):
+class APITradingState(BaseModel):
     trace_id: str
     trade_date: str
     policy_params: dict = Field(default_factory=dict)

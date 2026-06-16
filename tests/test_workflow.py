@@ -92,8 +92,8 @@ def test_langgraph_workflow_standalone(tmp_path: Path, monkeypatch) -> None:
     config.get_settings.cache_clear()
 
     from langgraph.checkpoint.sqlite import SqliteSaver
-    from workflow_demo.main import build_workflow, _as_state
-    from trading_state import TradingState
+    from app.models.trading_state import TradingState
+    from app.services.workflow_graph import build_workflow, _as_state
 
     conn = sqlite3.connect(str(tmp_path / "test.sqlite"), check_same_thread=False)
     checkpointer = SqliteSaver(conn)

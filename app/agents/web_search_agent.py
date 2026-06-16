@@ -18,7 +18,7 @@ MARKET_REPLAY_QUERY = (
 
 def web_search_node(state) -> dict[str, Any]:
     """Enrich policy context with market news and expert opinions."""
-    from trading_state import TradingState
+    from app.models.trading_state import TradingState
 
     if isinstance(state, dict):
         state = TradingState.model_validate(state)

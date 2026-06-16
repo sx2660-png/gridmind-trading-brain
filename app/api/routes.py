@@ -6,7 +6,11 @@ from uuid import uuid4
 from fastapi import APIRouter, HTTPException
 
 from app.agents.policy_agent import PolicyAgent
+from app.agents.execution_agent import ExecutionRequest, ExecutionResponse, submit_declaration
+from app.agents.prediction_agent import PredictionRequest, PredictionResponse, build_prediction
+from app.agents.strategy_agent import StrategyRequest, StrategyResponse, build_strategy
 from app.core.config import settings
+from app.models.api_state import APITradingState
 from app.models.policy import PolicyIndexStatus, PolicyQueryRequest, PolicyQueryResponse
 from app.models.workflow import (
     TradingDayRunRequest,
@@ -18,7 +22,6 @@ from app.services.trading_pipeline import run_trading_day
 from app.services.workflow_factory import get_workflow
 from app.models.prediction import PredictionOutput
 from app.models.risk import RiskCheckOutput
-from app.models.state import TradingState
 from app.models.strategy import StrategyOutput
 
 router = APIRouter(tags=["api"])
@@ -37,7 +40,7 @@ def api_health() -> dict:
 
 
 @router.get("/demo/state")
-def demo_state() -> TradingState:
+def demo_state() -> APITradingState:
     prediction = PredictionOutput(
         curve_96=[0.0] * 96,
         source="mock",
@@ -49,7 +52,7 @@ def demo_state() -> TradingState:
     )
     risk = RiskCheckOutput(passed=True, violations=[])
 
-    return TradingState(
+    return APITradingState(
         trace_id="demo-trace-001",
         trade_date="2026-05-17",
         policy_params={"region": "guangdong", "year": 2026},
@@ -90,7 +93,7 @@ def demo_policy_agent() -> PolicyQueryResponse:
 @router.post("/workflow/run", response_model=TradingDayRunResponse)
 def run_workflow(request: TradingDayRunRequest) -> TradingDayRunResponse:
     """给定交易日，通过 LangGraph 串联：联网搜索 → 政策规则 → 预测 → 策略 → 风控 → 报文。"""
-    from trading_state import TradingState as LangGraphState
+    from app.models.trading_state import TradingState as LangGraphState
 
     workflow = get_workflow()
     trace_id = f"trace-{request.trade_date.replace('-', '')}-{uuid4().hex[:8]}"
@@ -136,7 +139,7 @@ def run_workflow(request: TradingDayRunRequest) -> TradingDayRunResponse:
 @router.post("/workflow/resume", response_model=WorkflowStatusResponse)
 def resume_workflow(request: WorkflowResumeRequest) -> WorkflowStatusResponse:
     """Resume a workflow paused at human_review after operator decision."""
-    from trading_state import TradingState as LangGraphState
+    from app.models.trading_state import TradingState as LangGraphState
 
     workflow = get_workflow()
     config = {"configurable": {"thread_id": request.trace_id}}
@@ -171,7 +174,7 @@ def resume_workflow(request: WorkflowResumeRequest) -> WorkflowStatusResponse:
 @router.get("/workflow/status/{trace_id}", response_model=WorkflowStatusResponse)
 def get_workflow_status(trace_id: str) -> WorkflowStatusResponse:
     """Check the current state of a workflow by trace_id."""
-    from trading_state import TradingState as LangGraphState
+    from app.models.trading_state import TradingState as LangGraphState
 
     workflow = get_workflow()
     config = {"configurable": {"thread_id": trace_id}}
@@ -198,3 +201,21 @@ def get_workflow_status(trace_id: str) -> WorkflowStatusResponse:
 def run_workflow_legacy(request: TradingDayRunRequest) -> TradingDayRunResponse:
     """Legacy procedural pipeline (without LangGraph)."""
     return run_trading_day(request)
+
+
+@router.post("/mock/predict", response_model=PredictionResponse)
+def mock_predict(request: PredictionRequest) -> PredictionResponse:
+    """Mock prediction endpoint hosted by the main app."""
+    return build_prediction(request)
+
+
+@router.post("/mock/strategy", response_model=StrategyResponse)
+def mock_strategy(request: StrategyRequest) -> StrategyResponse:
+    """Mock strategy endpoint hosted by the main app."""
+    return build_strategy(request)
+
+
+@router.post("/mock/execute", response_model=ExecutionResponse)
+def mock_execute(request: ExecutionRequest) -> ExecutionResponse:
+    """Mock execution endpoint hosted by the main app."""
+    return submit_declaration(request)

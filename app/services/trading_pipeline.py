@@ -16,11 +16,11 @@ _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
-from mock_api.execution_api import ExecutionRequest, submit_declaration  # noqa: E402
-from mock_api.prediction_api import PredictionRequest, build_prediction  # noqa: E402
-from mock_api.strategy_api import StrategyRequest, build_strategy  # noqa: E402
-from risk_agent import check_risk  # noqa: E402
-from trading_state import TradingState  # noqa: E402
+from app.agents.execution_agent import ExecutionRequest, submit_declaration  # noqa: E402
+from app.agents.prediction_agent import PredictionRequest, build_prediction  # noqa: E402
+from app.agents.risk_agent import check_risk  # noqa: E402
+from app.agents.strategy_agent import StrategyRequest, build_strategy  # noqa: E402
+from app.models.trading_state import TradingState  # noqa: E402
 
 DEFAULT_POLICY_QUERY = "广东电力市场日前交易申报规则、96点曲线与偏差考核要求"
 DEFAULT_MAINTENANCE_LIMIT_MWH = 900.0
@@ -151,7 +151,7 @@ def _policy_rules_from_params(policy_params: dict) -> dict:
 
 def _recalibrated_strategy(state: TradingState):
     """After risk feedback, align declaration with forecast load (same as workflow_demo)."""
-    from mock_api.strategy_api import StrategyResponse
+    from app.agents.strategy_agent import StrategyResponse
 
     declaration_curve = [round(load, 2) for load in state.predicted_load_mwh]
     declaration_ratio = [1.0 for _ in state.predicted_load_mwh]

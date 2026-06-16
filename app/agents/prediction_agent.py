@@ -1,12 +1,15 @@
-"""Mock prediction API for electricity trading workflow tests."""
+"""Prediction Agent for electricity trading workflows."""
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 import math
 import random
+from typing import Any
 
 from pydantic import BaseModel, Field
+
+from app.models.trading_state import TradingState
 
 
 POINTS_PER_DAY = 24
@@ -50,6 +53,26 @@ def build_prediction(request: PredictionRequest) -> PredictionResponse:
     )
 
 
+def prediction_node(state: TradingState | dict[str, Any]) -> dict[str, Any]:
+    """Prediction Agent node: produce mock price/load forecasts."""
+    state = _as_state(state)
+    _log_node("Prediction Agent", state)
+
+    prediction = build_prediction(
+        PredictionRequest(
+            trading_date=state.trading_date,
+            market_type=state.market_type,
+        )
+    )
+
+    return {
+        "predicted_da_price": prediction.predicted_da_price,
+        "predicted_rt_price": prediction.predicted_rt_price,
+        "predicted_load_mwh": prediction.predicted_load_mwh,
+        "updated_at": _now(),
+    }
+
+
 def _daily_load_baseline(day_factor: float) -> list[float]:
     baseline: list[float] = []
     for hour in range(POINTS_PER_DAY):
@@ -83,3 +106,17 @@ def _day_factor(trading_date: str) -> float:
 
 def _round(value: float) -> float:
     return round(value, 2)
+
+
+def _as_state(state: TradingState | dict[str, Any]) -> TradingState:
+    if isinstance(state, TradingState):
+        return state
+    return TradingState.model_validate(state)
+
+
+def _log_node(node_name: str, state: TradingState) -> None:
+    print(f"[{node_name}] current_node={node_name} trace_id={state.trace_id}")
+
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
